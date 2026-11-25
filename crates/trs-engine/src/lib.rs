@@ -232,7 +232,7 @@ fn strictly_increasing(values: impl Iterator<Item = u32>) -> bool {
     true
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum GamePhase {
     Roam,
@@ -241,7 +241,7 @@ pub enum GamePhase {
     Complete,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct GameProgress {
     pub phase: GamePhase,
     pub frame: u32,
@@ -313,6 +313,85 @@ impl GameProgress {
             self.events.push("mission.completed".into());
         }
     }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct GameSave {
+    pub version: u32,
+    pub scene: String,
+    pub player_position: [f32; 3],
+    pub progress: GameProgress,
+}
+
+pub fn create_game_save(
+    scene: &SceneSpec,
+    progress: &GameProgress,
+    player_position: [f32; 3],
+) -> Result<String, String> {
+    let save = GameSave {
+        version: 1,
+        scene: scene.name.clone(),
+        player_position,
+        progress: progress.clone(),
+    };
+    validate_game_save(&save, scene)?;
+    serde_json::to_string_pretty(&save).map_err(|error| error.to_string())
+}
+
+pub fn parse_game_save(input: &str, scene: &SceneSpec) -> Result<GameSave, String> {
+    let save: GameSave =
+        serde_json::from_str(input).map_err(|error| format!("invalid save file: {error}"))?;
+    validate_game_save(&save, scene)?;
+    Ok(save)
+}
+
+fn validate_game_save(save: &GameSave, scene: &SceneSpec) -> Result<(), String> {
+    if save.version != 1 {
+        return Err(format!(
+            "unsupported save version {}; expected 1",
+            save.version
+        ));
+    }
+    if save.scene != scene.name {
+        return Err(format!(
+            "save belongs to scene '{}', not '{}'",
+            save.scene, scene.name
+        ));
+    }
+    if !finite3(save.player_position)
+        || !inside_ground(save.player_position, scene.player.size, scene.ground_size)
+    {
+        return Err("saved player position is invalid or outside the scene bounds".into());
+    }
+
+    let progress = &save.progress;
+    if progress.frame > scene.cutscene.duration_frames
+        || progress.dialogue_index > scene.cutscene.dialogue.len()
+        || scene.cutscene.dialogue[..progress.dialogue_index]
+            .iter()
+            .any(|line| line.frame > progress.frame)
+    {
+        return Err("saved cutscene progress is inconsistent".into());
+    }
+    match progress.phase {
+        GamePhase::Roam
+            if progress.frame == 0
+                && progress.dialogue_index == 0
+                && progress.objective.is_none() => {}
+        GamePhase::Cutscene
+            if progress.frame < scene.cutscene.duration_frames && progress.objective.is_none() => {}
+        GamePhase::FindField
+            if progress.frame == scene.cutscene.duration_frames
+                && progress.dialogue_index == scene.cutscene.dialogue.len()
+                && progress.objective.as_deref() == Some(scene.field.objective.as_str()) => {}
+        GamePhase::Complete
+            if progress.frame == scene.cutscene.duration_frames
+                && progress.dialogue_index == scene.cutscene.dialogue.len()
+                && progress.objective.as_deref()
+                    == Some(format!("Concluído: {}", scene.field.objective).as_str()) => {}
+        _ => return Err("saved mission state is inconsistent".into()),
+    }
+    Ok(())
 }
 
 fn horizontal_distance(a: [f32; 3], b: [f32; 3]) -> f32 {
@@ -410,6 +489,49 @@ mod tests {
         assert_eq!(game.phase, GamePhase::FindField);
         game.observe_player(scene.field.position, &scene.field);
         assert_eq!(game.phase, GamePhase::Complete);
+    }
+
+    #[test]
+    fn game_save_round_trips_and_rejects_wrong_scene_or_state() {
+        let scene = demo_scene();
+        let mut progress = GameProgress::default();
+        assert!(progress.interact(1.0));
+        progress.advance_cutscene(50, &scene.cutscene, &scene.field.objective);
+        let encoded = create_game_save(&scene, &progress, [-1.0, 0.9, 2.0]).unwrap();
+        let loaded = parse_game_save(&encoded, &scene).unwrap();
+        assert_eq!(loaded.progress.phase, GamePhase::Cutscene);
+        assert_eq!(loaded.progress.frame, 50);
+        assert_eq!(loaded.progress.dialogue, progress.dialogue);
+        assert_eq!(loaded.player_position, [-1.0, 0.9, 2.0]);
+
+        let other_scene = SceneSpec {
+            name: "different-scene".into(),
+            ..scene.clone()
+        };
+        assert!(
+            parse_game_save(&encoded, &other_scene)
+                .unwrap_err()
+                .contains("belongs")
+        );
+
+        let mut invalid: serde_json::Value = serde_json::from_str(&encoded).unwrap();
+        invalid["progress"]["frame"] = serde_json::json!(scene.cutscene.duration_frames);
+        let invalid = serde_json::to_string(&invalid).unwrap();
+        assert!(
+            parse_game_save(&invalid, &scene)
+                .unwrap_err()
+                .contains("inconsistent")
+        );
+    }
+
+    #[test]
+    fn game_save_rejects_out_of_bounds_player_position() {
+        let scene = demo_scene();
+        assert!(
+            create_game_save(&scene, &GameProgress::default(), [100.0, 0.9, 0.0])
+                .unwrap_err()
+                .contains("outside")
+        );
     }
 
     #[test]

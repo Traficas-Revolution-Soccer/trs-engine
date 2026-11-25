@@ -14,7 +14,7 @@
 - `cargo run -p trs-engine -- model create --spec assets/models/football.json --output assets/models/football.glb --json`
 - `cargo run -p trs-engine -- asset validate assets/models/football.glb --json`
 - `cargo run -p trs-engine -- demo --json`
-- `cargo run -p trs-engine -- play` (desktop display required; WASD moves, E interacts)
+- `cargo run -p trs-engine -- play --save saves/story.json` (desktop display required; WASD moves, E interacts, F5 saves, F9 reloads)
 - `cargo test --workspace`
 - `cargo fmt --all -- --check`
 - `cargo clippy --workspace --all-targets -- -D warnings`

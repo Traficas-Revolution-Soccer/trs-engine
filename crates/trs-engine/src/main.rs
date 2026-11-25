@@ -7,8 +7,8 @@ use std::{
     process::ExitCode,
 };
 use trs_engine::{
-    ActorSpec, AssetReport, GamePhase, GameProgress, ModelSpec, SceneSpec, create_model_glb,
-    parse_scene, run_demo, validate_gltf, validate_scene_assets,
+    ActorSpec, AssetReport, GamePhase, GameProgress, ModelSpec, SceneSpec, create_game_save,
+    create_model_glb, parse_game_save, parse_scene, run_demo, validate_gltf, validate_scene_assets,
 };
 
 #[derive(Parser)]
@@ -29,6 +29,8 @@ enum Command {
     Play {
         #[arg(long, default_value = "assets/scenes/bairro-da-bola.json")]
         scene: PathBuf,
+        #[arg(long, help = "Load and save mission progress at this JSON path")]
+        save: Option<PathBuf>,
     },
     /// Validate a declarative world scene.
     Scene {
@@ -105,7 +107,7 @@ fn execute(command: Command) -> Result<(), String> {
                 println!("Story slice passed: {}", report.slice_passed);
             }
         }
-        Command::Play { scene } => play(&scene)?,
+        Command::Play { scene, save } => play(&scene, save.as_deref())?,
         Command::Scene {
             command: SceneCommand::Validate { path, json },
         } => {
@@ -210,6 +212,7 @@ struct ActiveScene(SceneSpec);
 struct RuntimeStory {
     progress: GameProgress,
     frame_remainder: f32,
+    save_path: Option<PathBuf>,
 }
 
 impl Default for RuntimeStory {
@@ -217,12 +220,29 @@ impl Default for RuntimeStory {
         Self {
             progress: GameProgress::default(),
             frame_remainder: 0.0,
+            save_path: None,
         }
     }
 }
 
-fn play(path: &Path) -> Result<(), String> {
+#[derive(Resource)]
+struct InitialPlayerPosition([f32; 3]);
+
+fn play(path: &Path, save_path: Option<&Path>) -> Result<(), String> {
     let scene = load_scene(path)?;
+    let mut story = RuntimeStory {
+        save_path: save_path.map(Path::to_path_buf),
+        ..default()
+    };
+    let player_position = if let Some(save_path) = save_path.filter(|path| path.exists()) {
+        let input = fs::read_to_string(save_path)
+            .map_err(|error| format!("{}: {error}", save_path.display()))?;
+        let save = parse_game_save(&input, &scene)?;
+        story.progress = save.progress;
+        save.player_position
+    } else {
+        scene.player.position
+    };
     let title = format!("TRS Engine — {}", scene.name);
     let asset_root = Path::new("assets")
         .canonicalize()
@@ -247,12 +267,14 @@ fn play(path: &Path) -> Result<(), String> {
         )
         .add_plugins(RapierPhysicsPlugin::<NoUserData>::default())
         .insert_resource(ActiveScene(scene))
-        .init_resource::<RuntimeStory>()
+        .insert_resource(InitialPlayerPosition(player_position))
+        .insert_resource(story)
         .add_systems(Startup, setup_scene)
         .add_systems(
             Update,
             (
                 player_controller,
+                save_load_controls,
                 npc_interaction,
                 advance_story,
                 animate_npc,
@@ -272,6 +294,7 @@ fn setup_scene(
     mut materials: ResMut<Assets<StandardMaterial>>,
     asset_server: Res<AssetServer>,
     scene: Res<ActiveScene>,
+    initial_player_position: Res<InitialPlayerPosition>,
 ) {
     let spec = &scene.0;
     let ground_x = spec.ground_size[0];
@@ -289,8 +312,16 @@ fn setup_scene(
         &mut materials,
         &spec.player,
         true,
+        Some(initial_player_position.0),
     );
-    spawn_actor(&mut commands, &mut meshes, &mut materials, &spec.npc, false);
+    spawn_actor(
+        &mut commands,
+        &mut meshes,
+        &mut materials,
+        &spec.npc,
+        false,
+        None,
+    );
     for prop in &spec.props {
         let color = prop.color;
         commands.spawn((
@@ -333,7 +364,7 @@ fn setup_scene(
         Transform::from_xyz(1.0, 8.0, 4.0),
     ));
     commands.spawn((
-        Text::new("WASD: move   E: talk to Carlos"),
+        Text::new("WASD move · Space jump · E interact · F5 save · F9 load"),
         TextFont::from_font_size(24.0),
         TextColor(Color::WHITE),
         Node {
@@ -352,15 +383,17 @@ fn spawn_actor(
     materials: &mut Assets<StandardMaterial>,
     actor: &ActorSpec,
     player: bool,
+    position: Option<[f32; 3]>,
 ) {
     let color = actor.color;
     let radius = actor.size[0].min(actor.size[2]) * 0.4;
     let half_segment = (actor.size[1] * 0.5 - radius).max(0.0);
     let collider = Collider::capsule_y(half_segment, radius);
+    let position = position.unwrap_or(actor.position);
     let mut entity = commands.spawn((
         Mesh3d(meshes.add(Cuboid::new(actor.size[0], actor.size[1], actor.size[2]))),
         MeshMaterial3d(materials.add(Color::srgb(color[0], color[1], color[2]))),
-        Transform::from_xyz(actor.position[0], actor.position[1], actor.position[2]),
+        Transform::from_xyz(position[0], position[1], position[2]),
     ));
     if player {
         entity.insert((
@@ -438,6 +471,79 @@ fn player_controller(
     );
     controller.translation =
         Some(destination - transform.translation + Vec3::Y * motion.vertical_velocity * dt);
+}
+
+fn save_load_controls(
+    keys: Res<ButtonInput<KeyCode>>,
+    scene: Res<ActiveScene>,
+    mut story: ResMut<RuntimeStory>,
+    mut player: Query<(&mut Transform, &mut PlayerMotion), With<Player>>,
+) {
+    if keys.just_pressed(KeyCode::F5) {
+        let Some(path) = story.save_path.clone() else {
+            warn!("Pass --save <path> to enable mission saving");
+            return;
+        };
+        let Ok((transform, _)) = player.single_mut() else {
+            return;
+        };
+        let position = transform.translation.to_array();
+        match create_game_save(&scene.0, &story.progress, position)
+            .and_then(|contents| write_save_atomically(&path, &contents))
+        {
+            Ok(()) => info!("Mission saved to {}", path.display()),
+            Err(error) => error!("Could not save mission: {error}"),
+        }
+    }
+    if keys.just_pressed(KeyCode::F9) {
+        let Some(path) = story.save_path.clone() else {
+            warn!("Pass --save <path> to enable mission loading");
+            return;
+        };
+        let input = match fs::read_to_string(&path) {
+            Ok(input) => input,
+            Err(error) => {
+                error!("Could not read save {}: {error}", path.display());
+                return;
+            }
+        };
+        let save = match parse_game_save(&input, &scene.0) {
+            Ok(save) => save,
+            Err(error) => {
+                error!("Could not load mission save: {error}");
+                return;
+            }
+        };
+        let Ok((mut transform, mut motion)) = player.single_mut() else {
+            return;
+        };
+        transform.translation = Vec3::from_array(save.player_position);
+        motion.vertical_velocity = 0.0;
+        story.progress = save.progress;
+        story.frame_remainder = 0.0;
+        info!("Mission loaded from {}", path.display());
+    }
+}
+
+fn write_save_atomically(path: &Path, contents: &str) -> Result<(), String> {
+    if let Some(parent) = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
+        fs::create_dir_all(parent).map_err(|error| format!("{}: {error}", parent.display()))?;
+    }
+    let mut temporary_name = path.as_os_str().to_owned();
+    temporary_name.push(".tmp");
+    let temporary_path = PathBuf::from(temporary_name);
+    fs::write(&temporary_path, contents)
+        .map_err(|error| format!("{}: {error}", temporary_path.display()))?;
+    fs::rename(&temporary_path, path).map_err(|error| {
+        format!(
+            "could not replace {} with {}: {error}",
+            path.display(),
+            temporary_path.display()
+        )
+    })
 }
 
 fn npc_interaction(
@@ -565,6 +671,59 @@ mod tests {
     use super::*;
 
     use bevy::time::{TimePlugin, TimeUpdateStrategy};
+
+    #[test]
+    fn save_hotkeys_round_trip_mission_state_and_player_position() {
+        let scene =
+            parse_scene(include_str!("../../../assets/scenes/bairro-da-bola.json")).unwrap();
+        let save_path =
+            std::env::temp_dir().join(format!("trs-engine-save-{}.json", std::process::id()));
+        let mut story = RuntimeStory {
+            save_path: Some(save_path.clone()),
+            ..default()
+        };
+        assert!(story.progress.interact(1.0));
+        story
+            .progress
+            .advance_cutscene(50, &scene.cutscene, &scene.field.objective);
+        let mut app = App::new();
+        app.insert_resource(ActiveScene(scene))
+            .insert_resource(story)
+            .insert_resource(ButtonInput::<KeyCode>::default())
+            .add_systems(Update, save_load_controls);
+        let player = app
+            .world_mut()
+            .spawn((
+                Player,
+                PlayerMotion::default(),
+                Transform::from_xyz(-1.0, 0.9, 2.0),
+            ))
+            .id();
+
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .press(KeyCode::F5);
+        app.update();
+        *app.world_mut().resource_mut::<ButtonInput<KeyCode>>() = ButtonInput::default();
+        assert!(save_path.exists());
+
+        app.world_mut()
+            .get_mut::<Transform>(player)
+            .unwrap()
+            .translation = Vec3::new(4.0, 0.9, 3.0);
+        app.world_mut().resource_mut::<RuntimeStory>().progress = GameProgress::default();
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .press(KeyCode::F9);
+        app.update();
+
+        let transform = app.world().get::<Transform>(player).unwrap();
+        assert_eq!(transform.translation, Vec3::new(-1.0, 0.9, 2.0));
+        let progress = &app.world().resource::<RuntimeStory>().progress;
+        assert_eq!(progress.phase, GamePhase::Cutscene);
+        assert_eq!(progress.frame, 50);
+        let _ = fs::remove_file(save_path);
+    }
 
     #[test]
     fn character_controller_passes_field_sensor_and_stops_at_wall() {
