@@ -1,8 +1,9 @@
 # Known issues
 
-- The story-demo JSON shape is not yet a versioned external schema.
-- `trs demo` advances a deterministic simplified interaction state and does not simulate Rapier, render, or animate; `trs play` is the actual rendered Rapier-enabled scene.
-- The runtime cutscene beat is currently a log message over the static scene. No dialogue HUD, camera transition, or character animation is implemented.
-- Player movement directly updates the kinematic body's transform; this starter controller does not yet resolve movement against walls or implement gravity/jumping.
-- Asset creation/import, Blender orchestration, validation CLI, serialization, and Windows runtime/CI remain future work.
-- Desktop rendering requires an available graphics backend and display; headless CI only tests the story simulation.
+- Scene schema is version 1; backward-compatible migrations are not implemented.
+- `trs asset validate` checks the container and glTF version/mesh inventory, not every accessor, extension, texture, or material constraint required by the full glTF specification. Bevy's loader remains the runtime import check.
+- The modeler currently creates flat-shaded cuboids only. Blender is unavailable here; no Blender automation has been verified.
+- NPC animation is a procedural whole-body turn. There are no humanoid skeletons, bone tracks, skinning, facial animation, or retargeting.
+- The kinematic WASD controller clamps to world bounds but does not yet resolve wall collisions or implement gravity/jumping.
+- Camera/dialogue timeline is frame-indexed with linear camera transitions; no audio, VFX, video output, save/load, or NPC navmesh behavior yet.
+- Windows runtime, visual regression, and performance benchmarks remain unverified.

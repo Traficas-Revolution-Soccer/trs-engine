@@ -1,21 +1,22 @@
-# Architecture (MVP)
+# Architecture
 
-## Runtime boundaries
+## Runtime
 
-The workspace currently has one package, `trs-engine`. Its library contains deterministic story-slice state progression that can run and be tested without a GPU or window. The binary exposes that as `trs demo`, with Serde JSON output for agents. The `play` path builds a Bevy 0.20.1 application, creates the neighborhood scene procedurally, and installs the Rapier 0.37.0 physics plugin with fixed and kinematic colliders.
+The Rust workspace has one package (`trs-engine`). `src/lib.rs` owns scene-schema validation and a deterministic gameplay state machine shared by CLI demo tests and the interactive runtime. `src/main.rs` adapts that core to Clap and Bevy 0.20.1. Scene JSON provides player/NPC transforms, prop layout, field objective, frame-keyed dialogue, and camera shots; the Bevy runtime loads the same scene and its referenced GLB assets.
 
-The split is intentionally small: reusable game state stays independent of Bevy's renderer; the binary owns CLI, user input, scene setup, and engine integration. A workspace is in place, but additional crates will be introduced only when a real boundary needs independent ownership.
+Bevy provides desktop rendering and glTF scene loading. Rapier 0.37.0 provides fixed and kinematic colliders. The small controller and gameplay state remain independently testable without a GPU. Generated sample geometry is original.
 
-## Compatibility decision
+## Agent workflows
 
-Crates.io stable releases checked on 2026-11-24: Bevy 0.20.1 requires Rust 1.97.1; Rapier 0.37.0 declares Bevy 0.20 in its manifest. The `3d` + `x11` Bevy feature set enables a desktop 3D runtime without enabling Bevy's unrelated default audio and 2D bundles. Rapier's debug-render and picking integrations are disabled; 3D rigid bodies and colliders remain enabled.
+- `trs scene validate FILE --json`: parse and validate versioned scene data, finite/positive dimensions, world bounds, timeline ordering, and safe relative GLB references.
+- `trs model create --spec FILE --output FILE --json`: create a low-poly cuboid GLB from a JSON shape/material specification.
+- `trs asset validate FILE --json`: check glTF 2.0 JSON or the GLB header/JSON chunk and report mesh count.
+- `trs demo --json`: deterministically advance the shared interaction/cutscene/mission state and report each emitted event.
 
-## Current contracts
+## Compatibility
 
-- `run_demo()` returns a deterministic `DemoReport`; `trs demo --json` serializes it to JSON.
-- The interactive runtime moves the player with WASD and starts the NPC interaction once the player is within 1.8 world units.
-- Generated meshes and materials are original simple primitives; no external game content is bundled.
+Crates.io stable releases checked on 2026-11-24: Bevy 0.20.1 requires Rust 1.97.1; Rapier 0.37.0 declares Bevy 0.20. Bevy features include `3d`, `ui`, and `x11`; unrelated default audio support stays disabled.
 
-## Deliberately deferred
+## Boundaries
 
-The MVP does not yet import GLB, invoke Blender, implement a rig/animation pipeline, render cutscene timelines or dialogue UI, persist scenes, export frames, or implement agent editing APIs. The headless demo simulates story progression; it is not the Rapier runtime or a rendered capture. See `known-issues.md`.
+Model generation is box-only; the asset inspector does not replace a full glTF conformance validator. The actor's cutscene gesture is a procedural body rotation, not skeletal animation. Blender is not installed in the execution environment; no unverified Blender bridge is claimed. Rigging, arbitrary mesh editing, retargeting, save/load, navigation, cinematic audio/VFX, render capture, regression images, and Windows validation remain future work.

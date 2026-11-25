@@ -1,32 +1,39 @@
 # TRS Engine
 
-**AI-native, CLI-first 3D game engine in Rust and Bevy.** TRS Engine is being built so agents can create, run, validate, and inspect game content through documented commands and APIs instead of depending on manual editor workflows.
+AI-native, CLI-first 3D game engine in Rust and Bevy. Create and validate world scenes, generate original GLB models, run missions, and inspect results through commands and Rust APIs.
 
-> **Status: early MVP.** This repository currently contains a runnable Bevy 3D scene, Rapier colliders, keyboard movement, NPC proximity interaction, a deterministic headless story-slice demo, and a JSON CLI report. Rigging, authored animation assets, Blender automation, GLB import/export workflows, a timeline editor, and a full mission framework are not implemented yet.
+## Run
 
-## Quick start
-
-Requirements: Rust 1.97.1 or newer, Cargo, and a desktop graphics environment for `play` (Linux X11, Windows, and other Bevy-supported targets as dependencies permit).
+Requirements: Rust 1.97.1 or newer and Cargo. `play` requires a desktop display and graphics backend.
 
 ```sh
 cargo run -p trs-engine -- --help
-cargo run -p trs-engine -- demo
+cargo run -p trs-engine -- scene validate assets/scenes/bairro-da-bola.json --json
+cargo run -p trs-engine -- model create --spec assets/models/football.json --output assets/models/football.glb --json
+cargo run -p trs-engine -- asset validate assets/models/football.glb --json
 cargo run -p trs-engine -- demo --json
 cargo run -p trs-engine -- play
 ```
 
-`demo` runs without opening a window and emits a repeatable story slice: walk to an NPC, start a short dialogue/cutscene beat, return control, and set a football-field objective. `--json` returns structured data for agents. `play` opens a real-time 3D scene; use **W/A/S/D** to approach the orange NPC. The scene uses Rapier fixed colliders for the ground, player, NPC, and street props.
+The `demo` command executes the same deterministic mission progression as the runtime: approach Carlos, trigger a 120-frame dialogue/camera timeline, regain control, reach the soccer field, complete the objective, and return a JSON trace. `play` loads the JSON scene, imports its GLB through Bevy, uses Rapier colliders, and presents the objective/dialogue HUD. **W/A/S/D** moves; **E** starts the NPC interaction.
 
-## CLI contract
+## CLI
 
-| Command | Behavior |
+| Command | Purpose |
 | --- | --- |
-| `trs --help` | Show commands and usage |
-| `trs demo` | Print the deterministic headless vertical slice |
-| `trs demo --json` | Print `DemoReport` JSON (`scene`, `systems`, `events`, `slice_passed`) |
-| `trs play` | Open the interactive Bevy/Rapier 3D scene |
+| `trs demo [--json]` | Run the deterministic full story-mission test |
+| `trs play [--scene FILE]` | Play a scene JSON file |
+| `trs scene validate FILE [--json]` | Validate scene schema, transforms, bounds, dialogue, and camera timeline |
+| `trs model create --spec FILE --output FILE [--json]` | Generate an original colored box mesh as a glTF 2.0 binary (`.glb`) |
+| `trs asset validate FILE [--json]` | Validate glTF/GLB container header and glTF 2.0 document |
 
-Demo JSON is a versioned-by-release Rust struct, not a stable schema yet. CLI errors use Clap's standard diagnostics and exit codes. The headless demo exercises scripted gameplay state transitions; it does not render frames or advance the Rapier simulation. `play` is the rendered, physics-enabled runtime.
+JSON scene format: [assets/scenes/bairro-da-bola.json](assets/scenes/bairro-da-bola.json). Model specification: [assets/models/football.json](assets/models/football.json). Scene transforms, prop placement, camera shots, and dialogue cues are edited as data; the runtime loads the same format that `scene validate` checks.
+
+## Scope
+
+Implemented: Bevy 3D renderer and GLB import; Rapier runtime colliders; keyboard player control; scene-driven neighborhood props and field; NPC interaction; timed cutscene camera shots/dialogue; simple procedural NPC gesture; mission objective and completion; deterministic JSON gameplay trace; scene/asset validation; procedural cuboid GLB generation.
+
+Still incomplete: Blender orchestration, humanoid rigging/skinning, skeletal and facial animation/retargeting, general mesh editing and UV/texturing tools, authored audio/VFX tracks, full collision-resolved character controller, navigation/NPC behavior, save/load, video export and visual regression. The procedural gesture animates a primitive; it is not a rigged-character animation system.
 
 ## Development
 
@@ -37,4 +44,4 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo run -p trs-engine -- demo --json
 ```
 
-See [AGENTS.md](AGENTS.md) for machine-oriented project guidance, [docs/architecture.md](docs/architecture.md) for current boundaries and compatibility choices, and [docs/known-issues.md](docs/known-issues.md) for the explicit MVP gaps. The project is MIT-licensed. No third-party game assets are included.
+See [AGENTS.md](AGENTS.md), [docs/architecture.md](docs/architecture.md), [docs/progress.md](docs/progress.md), and [docs/known-issues.md](docs/known-issues.md). No proprietary game assets are included; generated sample geometry is original. MIT-licensed.

@@ -16,4 +16,7 @@ jobs:
       - run: cargo fmt --all -- --check
       - run: cargo test --workspace
       - run: cargo clippy --workspace --all-targets -- -D warnings
+      - run: cargo run -p trs-engine -- scene validate assets/scenes/bairro-da-bola.json --json
+      - run: cargo run -p trs-engine -- model create --spec assets/models/football.json --output target/football.generated.glb --json
+      - run: cargo run -p trs-engine -- asset validate target/football.generated.glb --json
       - run: cargo run -p trs-engine -- demo --json

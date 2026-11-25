@@ -10,9 +10,11 @@
 
 ## Commands
 
-- `cargo run -p trs-engine -- --help`
-- `cargo run -p trs-engine -- demo --json` (headless and CI-safe)
-- `cargo run -p trs-engine -- play` (desktop display required; WASD moves the player)
+- `cargo run -p trs-engine -- scene validate assets/scenes/bairro-da-bola.json --json`
+- `cargo run -p trs-engine -- model create --spec assets/models/football.json --output assets/models/football.glb --json`
+- `cargo run -p trs-engine -- asset validate assets/models/football.glb --json`
+- `cargo run -p trs-engine -- demo --json`
+- `cargo run -p trs-engine -- play` (desktop display required; WASD moves, E interacts)
 - `cargo test --workspace`
 - `cargo fmt --all -- --check`
 - `cargo clippy --workspace --all-targets -- -D warnings`
