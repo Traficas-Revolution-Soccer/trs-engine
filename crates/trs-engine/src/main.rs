@@ -192,6 +192,10 @@ fn load_scene(path: &Path) -> Result<SceneSpec, String> {
 }
 #[derive(Component)]
 struct Player;
+#[derive(Component, Default)]
+struct PlayerMotion {
+    vertical_velocity: f32,
+}
 
 #[derive(Component)]
 struct Npc;
@@ -277,7 +281,7 @@ fn setup_scene(
         MeshMaterial3d(materials.add(Color::srgb(0.18, 0.42, 0.22))),
         Transform::default(),
         RigidBody::Fixed,
-        Collider::cuboid(ground_x * 0.5, 0.1, ground_z * 0.5),
+        Collider::cuboid(ground_x * 0.5, 0.01, ground_z * 0.5),
     ));
     spawn_actor(
         &mut commands,
@@ -304,6 +308,7 @@ fn setup_scene(
         Transform::from_xyz(field.position[0], 0.04, field.position[2]),
         RigidBody::Fixed,
         Collider::cuboid(field.size[0] * 0.5, 0.04, field.size[1] * 0.5),
+        Sensor,
     ));
     if let Some(model) = &field.model {
         commands.spawn((
@@ -349,6 +354,9 @@ fn spawn_actor(
     player: bool,
 ) {
     let color = actor.color;
+    let radius = actor.size[0].min(actor.size[2]) * 0.4;
+    let half_segment = (actor.size[1] * 0.5 - radius).max(0.0);
+    let collider = Collider::capsule_y(half_segment, radius);
     let mut entity = commands.spawn((
         Mesh3d(meshes.add(Cuboid::new(actor.size[0], actor.size[1], actor.size[2]))),
         MeshMaterial3d(materials.add(Color::srgb(color[0], color[1], color[2]))),
@@ -357,15 +365,16 @@ fn spawn_actor(
     if player {
         entity.insert((
             Player,
+            PlayerMotion::default(),
             RigidBody::KinematicPositionBased,
-            Collider::capsule_y(actor.size[1] * 0.44, actor.size[0] * 0.4),
+            collider,
+            KinematicCharacterController {
+                snap_to_ground: Some(CharacterLength::Absolute(0.05)),
+                ..default()
+            },
         ));
     } else {
-        entity.insert((
-            Npc,
-            RigidBody::Fixed,
-            Collider::capsule_y(actor.size[1] * 0.44, actor.size[0] * 0.4),
-        ));
+        entity.insert((Npc, RigidBody::Fixed, collider));
     }
 }
 
@@ -374,36 +383,61 @@ fn player_controller(
     time: Res<Time>,
     scene: Res<ActiveScene>,
     story: Res<RuntimeStory>,
-    mut player: Query<&mut Transform, With<Player>>,
+    mut player: Query<
+        (
+            &Transform,
+            &mut KinematicCharacterController,
+            &mut PlayerMotion,
+            Option<&KinematicCharacterControllerOutput>,
+        ),
+        With<Player>,
+    >,
 ) {
-    if !matches!(story.progress.phase, GamePhase::Roam | GamePhase::FindField) {
+    let Ok((transform, mut controller, mut motion, output)) = player.single_mut() else {
         return;
-    }
+    };
+    let dt = time.delta_secs();
+    let can_control = matches!(story.progress.phase, GamePhase::Roam | GamePhase::FindField);
     let mut direction = Vec3::ZERO;
-    if keys.pressed(KeyCode::KeyW) {
-        direction.z -= 1.0;
+    if can_control {
+        if keys.pressed(KeyCode::KeyW) {
+            direction.z -= 1.0;
+        }
+        if keys.pressed(KeyCode::KeyS) {
+            direction.z += 1.0;
+        }
+        if keys.pressed(KeyCode::KeyA) {
+            direction.x -= 1.0;
+        }
+        if keys.pressed(KeyCode::KeyD) {
+            direction.x += 1.0;
+        }
     }
-    if keys.pressed(KeyCode::KeyS) {
-        direction.z += 1.0;
+
+    let grounded = output.is_some_and(|output| output.grounded);
+    if grounded && motion.vertical_velocity < 0.0 {
+        motion.vertical_velocity = 0.0;
     }
-    if keys.pressed(KeyCode::KeyA) {
-        direction.x -= 1.0;
+    if can_control && grounded && keys.just_pressed(KeyCode::Space) {
+        motion.vertical_velocity = 4.5;
     }
-    if keys.pressed(KeyCode::KeyD) {
-        direction.x += 1.0;
-    }
-    if let Ok(mut transform) = player.single_mut() {
-        let speed = 3.0 * time.delta_secs();
-        transform.translation += direction.normalize_or_zero() * speed;
-        transform.translation.x = transform
-            .translation
-            .x
-            .clamp(-scene.0.ground_size[0] * 0.5, scene.0.ground_size[0] * 0.5);
-        transform.translation.z = transform
-            .translation
-            .z
-            .clamp(-scene.0.ground_size[1] * 0.5, scene.0.ground_size[1] * 0.5);
-    }
+    motion.vertical_velocity -= 9.81 * dt;
+
+    let radius = scene.0.player.size[0].min(scene.0.player.size[2]) * 0.4;
+    let destination = transform.translation + direction.normalize_or_zero() * 3.0 * dt;
+    let destination = Vec3::new(
+        destination.x.clamp(
+            -scene.0.ground_size[0] * 0.5 + radius,
+            scene.0.ground_size[0] * 0.5 - radius,
+        ),
+        transform.translation.y,
+        destination.z.clamp(
+            -scene.0.ground_size[1] * 0.5 + radius,
+            scene.0.ground_size[1] * 0.5 - radius,
+        ),
+    );
+    controller.translation =
+        Some(destination - transform.translation + Vec3::Y * motion.vertical_velocity * dt);
 }
 
 fn npc_interaction(
@@ -524,4 +558,144 @@ fn update_hud(
             .clone()
             .unwrap_or_else(|| "Missão concluída!".into()),
     };
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use bevy::time::{TimePlugin, TimeUpdateStrategy};
+
+    #[test]
+    fn character_controller_passes_field_sensor_and_stops_at_wall() {
+        let mut app = App::new();
+        app.add_plugins((
+            TransformPlugin,
+            TimePlugin,
+            RapierPhysicsPlugin::<NoUserData>::default(),
+        ))
+        .insert_resource(TimeUpdateStrategy::ManualDuration(
+            std::time::Duration::from_secs_f32(1.0 / 60.0),
+        ));
+        app.finish();
+        app.world_mut().spawn((
+            RigidBody::Fixed,
+            Sensor,
+            Collider::cuboid(0.5, 1.0, 1.0),
+            Transform::from_xyz(1.0, 1.0, 0.0),
+        ));
+        app.world_mut().spawn((
+            RigidBody::Fixed,
+            Collider::cuboid(0.1, 2.0, 2.0),
+            Transform::from_xyz(3.0, 1.0, 0.0),
+        ));
+        let character = app
+            .world_mut()
+            .spawn((
+                Collider::capsule_y(0.6, 0.3),
+                KinematicCharacterController::default(),
+                Transform::from_xyz(0.0, 1.0, 0.0),
+            ))
+            .id();
+
+        app.update();
+        app.update();
+        app.world_mut()
+            .get_mut::<KinematicCharacterController>(character)
+            .unwrap()
+            .translation = Some(Vec3::X * 5.0);
+        app.update();
+
+        let position = app
+            .world()
+            .get::<Transform>(character)
+            .unwrap()
+            .translation
+            .x;
+        let output = app
+            .world()
+            .get::<KinematicCharacterControllerOutput>(character)
+            .unwrap();
+        assert!(
+            position > 2.0,
+            "sensor field blocked movement at {position}"
+        );
+        assert!(position < 2.9, "character crossed wall at {position}");
+        assert!(!output.collisions.is_empty());
+    }
+
+    #[test]
+    fn player_controller_jumps_and_lands_on_ground() {
+        let scene =
+            parse_scene(include_str!("../../../assets/scenes/bairro-da-bola.json")).unwrap();
+        let mut app = App::new();
+        app.add_plugins((
+            TransformPlugin,
+            TimePlugin,
+            RapierPhysicsPlugin::<NoUserData>::default(),
+        ))
+        .insert_resource(TimeUpdateStrategy::ManualDuration(
+            std::time::Duration::from_secs_f32(1.0 / 60.0),
+        ))
+        .insert_resource(ActiveScene(scene))
+        .init_resource::<RuntimeStory>()
+        .insert_resource(ButtonInput::<KeyCode>::default())
+        .add_systems(Update, player_controller);
+        app.finish();
+        app.world_mut().spawn((
+            RigidBody::Fixed,
+            Collider::cuboid(16.0, 0.25, 12.0),
+            Transform::from_xyz(0.0, -0.25, 0.0),
+        ));
+        let player = app
+            .world_mut()
+            .spawn((
+                Player,
+                PlayerMotion::default(),
+                RigidBody::KinematicPositionBased,
+                Collider::capsule_y(0.62, 0.28),
+                KinematicCharacterController {
+                    snap_to_ground: Some(CharacterLength::Absolute(0.05)),
+                    ..default()
+                },
+                Transform::from_xyz(0.0, 1.5, 0.0),
+            ))
+            .id();
+
+        for _ in 0..45 {
+            app.update();
+        }
+        let before = app.world().get::<Transform>(player).unwrap().translation.y;
+        assert!(
+            app.world()
+                .get::<KinematicCharacterControllerOutput>(player)
+                .unwrap()
+                .grounded,
+            "player did not reach the ground before jumping at y={before}"
+        );
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .press(KeyCode::Space);
+        app.update();
+        *app.world_mut().resource_mut::<ButtonInput<KeyCode>>() = ButtonInput::default();
+        let airborne = app.world().get::<Transform>(player).unwrap().translation.y;
+        assert!(
+            airborne > before + 0.05,
+            "jump did not lift player: {airborne}"
+        );
+
+        for _ in 0..90 {
+            app.update();
+        }
+        let landed = app.world().get::<Transform>(player).unwrap().translation.y;
+        let output = app
+            .world()
+            .get::<KinematicCharacterControllerOutput>(player)
+            .unwrap();
+        assert!(output.grounded, "player did not land at y={landed}");
+        assert!(
+            (landed - 0.9).abs() < 0.1,
+            "ground contact drifted to y={landed}"
+        );
+    }
 }

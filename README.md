@@ -15,7 +15,7 @@ cargo run -p trs-engine -- demo --json
 cargo run -p trs-engine -- play
 ```
 
-The `demo` command executes the same deterministic mission progression as the runtime: approach Carlos, trigger a 120-frame dialogue/camera timeline, regain control, reach the soccer field, complete the objective, and return a JSON trace. `play` loads the JSON scene, imports its GLB through Bevy, uses Rapier colliders, and presents the objective/dialogue HUD. **W/A/S/D** moves; **E** starts the NPC interaction.
+The `demo` command executes the same deterministic mission progression as the runtime: approach Carlos, trigger a 120-frame dialogue/camera timeline, regain control, reach the soccer field, complete the objective, and return a JSON trace. `play` loads the JSON scene, imports its GLB through Bevy, uses Rapier colliders, and presents the objective/dialogue HUD. **W/A/S/D** moves, **Space** jumps, and **E** starts the NPC interaction.
 
 ## CLI
 
@@ -31,9 +31,9 @@ JSON scene format: [assets/scenes/bairro-da-bola.json](assets/scenes/bairro-da-b
 
 ## Scope
 
-Implemented: Bevy 3D renderer and GLB import; Rapier runtime colliders; keyboard player control; scene-driven neighborhood props and field; NPC interaction; timed cutscene camera shots/dialogue; simple procedural NPC gesture; mission objective and completion; deterministic JSON gameplay trace; scene/asset validation; procedural cuboid GLB generation.
+Implemented: Bevy 3D renderer and GLB import; Rapier kinematic character-controller collision, obstacle sliding, gravity and jumping; scene-driven neighborhood props and field; NPC interaction; timed cutscene camera shots/dialogue; simple procedural NPC gesture; mission objective and completion; deterministic JSON gameplay trace; scene/asset validation; procedural cuboid GLB generation.
 
-Still incomplete: Blender orchestration, humanoid rigging/skinning, skeletal and facial animation/retargeting, general mesh editing and UV/texturing tools, authored audio/VFX tracks, full collision-resolved character controller, navigation/NPC behavior, save/load, video export and visual regression. The procedural gesture animates a primitive; it is not a rigged-character animation system.
+Still incomplete: Blender orchestration, humanoid rigging/skinning, skeletal and facial animation/retargeting, general mesh editing and UV/texturing tools, authored audio/VFX tracks, navigation/NPC behavior, save/load, video export and visual regression. The procedural gesture animates a primitive; it is not a rigged-character animation system.
 
 ## Development
 
