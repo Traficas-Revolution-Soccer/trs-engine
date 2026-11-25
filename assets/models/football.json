@@ -1,5 +1,6 @@
 {
   "name": "street-football",
+  "shape": "sphere",
   "size": [0.42, 0.42, 0.42],
   "color": [0.94, 0.9, 0.72, 1.0]
 }

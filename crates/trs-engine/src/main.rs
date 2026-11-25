@@ -7,7 +7,7 @@ use std::{
     process::ExitCode,
 };
 use trs_engine::{
-    ActorSpec, AssetReport, GamePhase, GameProgress, ModelSpec, SceneSpec, create_box_glb,
+    ActorSpec, AssetReport, GamePhase, GameProgress, ModelSpec, SceneSpec, create_model_glb,
     parse_scene, run_demo, validate_gltf, validate_scene_assets,
 };
 
@@ -40,7 +40,7 @@ enum Command {
         #[command(subcommand)]
         command: AssetCommand,
     },
-    /// Generate an original primitive model as a GLB file.
+    /// Generate an original box or UV-sphere mesh as a GLB file.
     Model {
         #[command(subcommand)]
         command: ModelCommand,
@@ -137,7 +137,7 @@ fn execute(command: Command) -> Result<(), String> {
                 fs::read_to_string(&spec).map_err(|e| format!("{}: {e}", spec.display()))?;
             let model: ModelSpec =
                 serde_json::from_str(&contents).map_err(|e| format!("invalid model spec: {e}"))?;
-            let glb = create_box_glb(&model)?;
+            let glb = create_model_glb(&model)?;
             if let Some(parent) = output
                 .parent()
                 .filter(|parent| !parent.as_os_str().is_empty())

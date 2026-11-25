@@ -24,16 +24,16 @@ The `demo` command executes the same deterministic mission progression as the ru
 | `trs demo [--json]` | Run the deterministic full story-mission test |
 | `trs play [--scene FILE]` | Play a scene JSON file |
 | `trs scene validate FILE [--json]` | Validate scene schema, transforms, bounds, dialogue, and camera timeline |
-| `trs model create --spec FILE --output FILE [--json]` | Generate an original colored box mesh as a glTF 2.0 binary (`.glb`) |
+| `trs model create --spec FILE --output FILE [--json]` | Generate a colored box or UV-sphere mesh as a glTF 2.0 binary (`.glb`) |
 | `trs asset validate FILE [--json]` | Validate glTF/GLB container header and glTF 2.0 document |
 
-JSON scene format: [assets/scenes/bairro-da-bola.json](assets/scenes/bairro-da-bola.json). Model specification: [assets/models/football.json](assets/models/football.json). Scene transforms, prop placement, camera shots, and dialogue cues are edited as data; the runtime loads the same format that `scene validate` checks.
+JSON scene format: [assets/scenes/bairro-da-bola.json](assets/scenes/bairro-da-bola.json). Model specification: [assets/models/football.json](assets/models/football.json). Set `shape` to `box` or `sphere` (omitted means `box`); specify dimensions and RGBA color in the same JSON. Scene transforms, prop placement, camera shots, and dialogue cues are edited as data; the runtime loads the same format that `scene validate` checks.
 
 ## Scope
 
-Implemented: Bevy 3D renderer and GLB import; Rapier kinematic character-controller collision, obstacle sliding, gravity and jumping; scene-driven neighborhood props and field; NPC interaction; timed cutscene camera shots/dialogue; simple procedural NPC gesture; mission objective and completion; deterministic JSON gameplay trace; scene/asset validation; procedural cuboid GLB generation.
+Implemented: Bevy 3D renderer and GLB import; Rapier character-controller collision, gravity and jumping; scene-driven neighborhood props and field; NPC interaction; timed cutscene camera shots/dialogue; simple procedural NPC gesture; mission objective and completion; deterministic JSON gameplay trace; scene/asset validation; procedural box and UV-sphere GLB generation.
 
-Still incomplete: Blender orchestration, humanoid rigging/skinning, skeletal and facial animation/retargeting, general mesh editing and UV/texturing tools, authored audio/VFX tracks, navigation/NPC behavior, save/load, video export and visual regression. The procedural gesture animates a primitive; it is not a rigged-character animation system.
+Still incomplete: Blender orchestration, football panel/texturing, humanoid rigging/skinning, skeletal and facial animation/retargeting, general mesh editing and UV/texturing tools, authored audio/VFX tracks, navigation/NPC behavior, save/load, video export and visual regression. The generated sphere has no soccer-ball panel pattern, and the procedural gesture animates a primitive, not a rigged character.
 
 ## Development
 

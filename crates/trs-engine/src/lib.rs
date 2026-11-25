@@ -1,5 +1,7 @@
 mod assets;
-pub use assets::{AssetReport, ModelSpec, create_box_glb, validate_gltf};
+pub use assets::{
+    AssetReport, ModelShape, ModelSpec, create_box_glb, create_model_glb, validate_gltf,
+};
 
 use serde::{Deserialize, Serialize};
 use std::path::Path;
