@@ -31,7 +31,7 @@ JSON scene format: [assets/scenes/bairro-da-bola.json](assets/scenes/bairro-da-b
 
 ## Scope
 
-Implemented: Bevy 3D renderer and GLB import; Rapier character-controller collision, gravity and jumping; scene-driven neighborhood props and field; NPC interaction; timed cutscene camera shots/dialogue; simple procedural NPC gesture; mission objective and completion; deterministic JSON gameplay trace; versioned mission save/load; scene/asset validation; procedural box and UV-sphere GLB generation.
+Implemented: Bevy 3D renderer and GLB import; Rapier character-controller collision, gravity and jumping; procedural neighborhood with detailed houses, trees, a marked soccer pitch, and stylized player/NPC models; player-facing movement; eased cutscene camera shots and smooth player-follow camera; NPC interaction/gesture, mission progression, deterministic JSON trace, versioned mission save/load, scene/asset validation, and procedural box/UV-sphere GLB generation.
 
 Still incomplete: Blender orchestration, football panel/texturing, humanoid rigging/skinning, skeletal and facial animation/retargeting, general mesh editing and UV/texturing tools, authored audio/VFX tracks, navigation/NPC behavior, automatic checkpointing, video export and visual regression. The generated sphere has no soccer-ball panel pattern, and the procedural gesture animates a primitive, not a rigged character.
 

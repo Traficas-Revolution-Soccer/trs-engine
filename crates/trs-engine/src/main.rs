@@ -306,6 +306,28 @@ fn setup_scene(
         RigidBody::Fixed,
         Collider::cuboid(ground_x * 0.5, 0.01, ground_z * 0.5),
     ));
+    for stripe in 0..8 {
+        spawn_static_box(
+            &mut commands,
+            &mut meshes,
+            &mut materials,
+            Vec3::new(0.0, 0.015, -10.0 + stripe as f32 * 2.8),
+            Vec3::new(ground_x, 0.02, 1.35),
+            if stripe % 2 == 0 {
+                Color::srgb(0.19, 0.44, 0.22)
+            } else {
+                Color::srgb(0.17, 0.40, 0.20)
+            },
+        );
+    }
+    for (position, scale) in [
+        (Vec3::new(-13.0, 0.0, -3.0), 1.0),
+        (Vec3::new(13.0, 0.0, -3.0), 1.0),
+        (Vec3::new(-13.0, 0.0, 6.0), 0.85),
+        (Vec3::new(14.0, 0.0, 9.0), 0.9),
+    ] {
+        spawn_tree(&mut commands, &mut meshes, &mut materials, position, scale);
+    }
     spawn_actor(
         &mut commands,
         &mut meshes,
@@ -331,8 +353,24 @@ fn setup_scene(
             RigidBody::Fixed,
             Collider::cuboid(prop.size[0] * 0.5, prop.size[1] * 0.5, prop.size[2] * 0.5),
         ));
+        if prop.size[0] > 2.0 && prop.size[1] > 2.0 && prop.size[2] > 2.0 {
+            spawn_house_details(
+                &mut commands,
+                &mut meshes,
+                &mut materials,
+                prop.position,
+                prop.size,
+            );
+        }
     }
     let field = &spec.field;
+    spawn_pitch_markings(
+        &mut commands,
+        &mut meshes,
+        &mut materials,
+        field.position,
+        field.size,
+    );
     commands.spawn((
         Mesh3d(meshes.add(Cuboid::new(field.size[0], 0.08, field.size[1]))),
         MeshMaterial3d(materials.add(Color::srgb(0.12, 0.52, 0.2))),
@@ -353,7 +391,10 @@ fn setup_scene(
             Transform::from_xyz(field.position[0], 0.5, field.position[2]),
         ));
     }
-    let camera = Transform::from_xyz(0.0, 7.0, 11.0).looking_at(Vec3::ZERO, Vec3::Y);
+    let player_position = Vec3::from_array(initial_player_position.0);
+    let camera_position = player_position + Vec3::new(0.0, 5.2, 8.0);
+    let camera = Transform::from_translation(camera_position)
+        .looking_at(player_position + Vec3::Y * 0.7, Vec3::Y);
     commands.spawn((Camera3d::default(), camera));
     commands.spawn((
         PointLight {
@@ -376,6 +417,250 @@ fn setup_scene(
         DialogueHud,
     ));
 }
+fn spawn_static_box(
+    commands: &mut Commands,
+    meshes: &mut Assets<Mesh>,
+    materials: &mut Assets<StandardMaterial>,
+    position: Vec3,
+    size: Vec3,
+    color: Color,
+) {
+    commands.spawn((
+        Mesh3d(meshes.add(Cuboid::new(size.x, size.y, size.z))),
+        MeshMaterial3d(materials.add(color)),
+        Transform::from_translation(position),
+    ));
+}
+
+fn spawn_static_sphere(
+    commands: &mut Commands,
+    meshes: &mut Assets<Mesh>,
+    materials: &mut Assets<StandardMaterial>,
+    position: Vec3,
+    scale: Vec3,
+    color: Color,
+) {
+    commands.spawn((
+        Mesh3d(meshes.add(Sphere::new(1.0).mesh().uv(16, 12))),
+        MeshMaterial3d(materials.add(color)),
+        Transform::from_translation(position).with_scale(scale),
+    ));
+}
+
+fn spawn_tree(
+    commands: &mut Commands,
+    meshes: &mut Assets<Mesh>,
+    materials: &mut Assets<StandardMaterial>,
+    position: Vec3,
+    scale: f32,
+) {
+    commands.spawn((
+        Mesh3d(meshes.add(Cylinder::new(0.18 * scale, 1.55 * scale))),
+        MeshMaterial3d(materials.add(Color::srgb(0.31, 0.17, 0.08))),
+        Transform::from_xyz(position.x, 0.78 * scale, position.z),
+    ));
+    for (offset, size, color) in [
+        (
+            Vec3::new(0.0, 2.0, 0.0),
+            Vec3::splat(1.55),
+            Color::srgb(0.12, 0.36, 0.16),
+        ),
+        (
+            Vec3::new(-0.48, 1.8, 0.08),
+            Vec3::splat(1.05),
+            Color::srgb(0.16, 0.43, 0.18),
+        ),
+        (
+            Vec3::new(0.46, 1.82, -0.1),
+            Vec3::splat(1.08),
+            Color::srgb(0.19, 0.47, 0.2),
+        ),
+    ] {
+        spawn_static_sphere(
+            commands,
+            meshes,
+            materials,
+            position + offset * scale,
+            size * scale,
+            color,
+        );
+    }
+}
+
+fn spawn_house_details(
+    commands: &mut Commands,
+    meshes: &mut Assets<Mesh>,
+    materials: &mut Assets<StandardMaterial>,
+    position: [f32; 3],
+    size: [f32; 3],
+) {
+    let center = Vec3::from_array(position);
+    let (width, height, depth) = (size[0], size[1], size[2]);
+    let front = center.z + depth * 0.5;
+    spawn_static_box(
+        commands,
+        meshes,
+        materials,
+        center + Vec3::Y * (height * 0.5 + 0.17),
+        Vec3::new(width + 0.65, 0.34, depth + 0.65),
+        Color::srgb(0.48, 0.14, 0.09),
+    );
+    spawn_static_box(
+        commands,
+        meshes,
+        materials,
+        Vec3::new(center.x, 0.12, front + 0.12),
+        Vec3::new(width + 0.18, 0.2, 0.3),
+        Color::srgb(0.84, 0.76, 0.61),
+    );
+    spawn_static_box(
+        commands,
+        meshes,
+        materials,
+        Vec3::new(center.x, height * 0.52, front + 0.075),
+        Vec3::new(0.84, height * 0.55, 0.12),
+        Color::srgb(0.22, 0.11, 0.07),
+    );
+    spawn_static_box(
+        commands,
+        meshes,
+        materials,
+        Vec3::new(center.x, height * 0.52, front + 0.15),
+        Vec3::new(0.66, height * 0.49, 0.08),
+        Color::srgb(0.45, 0.24, 0.13),
+    );
+    for side in [-1.0, 1.0] {
+        let window_x = center.x + side * width * 0.29;
+        spawn_static_box(
+            commands,
+            meshes,
+            materials,
+            Vec3::new(window_x, height * 0.68, front + 0.08),
+            Vec3::new(0.92, 0.95, 0.12),
+            Color::srgb(0.91, 0.78, 0.54),
+        );
+        spawn_static_box(
+            commands,
+            meshes,
+            materials,
+            Vec3::new(window_x, height * 0.68, front + 0.16),
+            Vec3::new(0.72, 0.73, 0.06),
+            Color::srgb(0.18, 0.52, 0.63),
+        );
+        spawn_static_box(
+            commands,
+            meshes,
+            materials,
+            Vec3::new(window_x, height * 0.68, front + 0.21),
+            Vec3::new(0.07, 0.73, 0.03),
+            Color::srgb(0.91, 0.78, 0.54),
+        );
+        spawn_static_box(
+            commands,
+            meshes,
+            materials,
+            Vec3::new(window_x, height * 0.68, front + 0.21),
+            Vec3::new(0.72, 0.07, 0.03),
+            Color::srgb(0.91, 0.78, 0.54),
+        );
+    }
+}
+
+fn spawn_pitch_markings(
+    commands: &mut Commands,
+    meshes: &mut Assets<Mesh>,
+    materials: &mut Assets<StandardMaterial>,
+    position: [f32; 3],
+    size: [f32; 2],
+) {
+    let (x, y, z) = (position[0], 0.091, position[2]);
+    let white = Color::srgb(0.92, 0.91, 0.81);
+    let (half_x, half_z) = (size[0] * 0.5 - 0.12, size[1] * 0.5 - 0.12);
+    let line_width = 0.055;
+    for (offset, dimensions) in [
+        (
+            Vec3::new(0.0, 0.0, -half_z),
+            Vec3::new(size[0], 0.025, line_width),
+        ),
+        (
+            Vec3::new(0.0, 0.0, half_z),
+            Vec3::new(size[0], 0.025, line_width),
+        ),
+        (
+            Vec3::new(-half_x, 0.0, 0.0),
+            Vec3::new(line_width, 0.025, size[1]),
+        ),
+        (
+            Vec3::new(half_x, 0.0, 0.0),
+            Vec3::new(line_width, 0.025, size[1]),
+        ),
+        (Vec3::ZERO, Vec3::new(line_width, 0.025, size[1])),
+    ] {
+        spawn_static_box(
+            commands,
+            meshes,
+            materials,
+            Vec3::new(x, y, z) + offset,
+            dimensions,
+            white,
+        );
+    }
+    let radius = size[1].min(size[0]) * 0.15;
+    for segment in 0..24 {
+        let angle = std::f32::consts::TAU * segment as f32 / 24.0;
+        let mut transform =
+            Transform::from_xyz(x + angle.cos() * radius, y, z + angle.sin() * radius);
+        transform.rotation = Quat::from_rotation_y(-angle);
+        commands.spawn((
+            Mesh3d(meshes.add(Cuboid::new(radius * 0.28, 0.025, line_width))),
+            MeshMaterial3d(materials.add(white)),
+            transform,
+        ));
+    }
+    spawn_goal(
+        commands,
+        meshes,
+        materials,
+        Vec3::new(x - half_x, 0.0, z),
+        half_z,
+    );
+    spawn_goal(
+        commands,
+        meshes,
+        materials,
+        Vec3::new(x + half_x, 0.0, z),
+        half_z,
+    );
+}
+
+fn spawn_goal(
+    commands: &mut Commands,
+    meshes: &mut Assets<Mesh>,
+    materials: &mut Assets<StandardMaterial>,
+    center: Vec3,
+    field_half_z: f32,
+) {
+    let goal_width = field_half_z * 0.6;
+    let frame = Color::srgb(0.95, 0.94, 0.87);
+    for side in [-1.0, 1.0] {
+        spawn_static_box(
+            commands,
+            meshes,
+            materials,
+            center + Vec3::new(0.0, 0.85, side * goal_width * 0.5),
+            Vec3::new(0.1, 1.7, 0.1),
+            frame,
+        );
+    }
+    spawn_static_box(
+        commands,
+        meshes,
+        materials,
+        center + Vec3::new(0.0, 1.68, 0.0),
+        Vec3::new(0.1, 0.1, goal_width),
+        frame,
+    );
+}
 
 fn spawn_actor(
     commands: &mut Commands,
@@ -385,30 +670,192 @@ fn spawn_actor(
     player: bool,
     position: Option<[f32; 3]>,
 ) {
-    let color = actor.color;
     let radius = actor.size[0].min(actor.size[2]) * 0.4;
     let half_segment = (actor.size[1] * 0.5 - radius).max(0.0);
-    let collider = Collider::capsule_y(half_segment, radius);
-    let position = position.unwrap_or(actor.position);
-    let mut entity = commands.spawn((
-        Mesh3d(meshes.add(Cuboid::new(actor.size[0], actor.size[1], actor.size[2]))),
-        MeshMaterial3d(materials.add(Color::srgb(color[0], color[1], color[2]))),
-        Transform::from_xyz(position[0], position[1], position[2]),
-    ));
+    let root = commands
+        .spawn((
+            Transform::from_translation(Vec3::from_array(position.unwrap_or(actor.position))),
+            Visibility::Visible,
+        ))
+        .id();
+    let color = Color::srgb(actor.color[0], actor.color[1], actor.color[2]);
+    let width = actor.size[0];
+    let height = actor.size[1];
+    let depth = actor.size[2];
+    let skin = Color::srgb(0.82, 0.56, 0.39);
+    let shorts = if player {
+        Color::srgb(0.07, 0.16, 0.34)
+    } else {
+        Color::srgb(0.23, 0.18, 0.15)
+    };
+    let hair = if player {
+        Color::srgb(0.09, 0.055, 0.035)
+    } else {
+        Color::srgb(0.18, 0.085, 0.035)
+    };
+    spawn_actor_box(
+        commands,
+        meshes,
+        materials,
+        root,
+        Vec3::new(0.0, height * 0.06, 0.0),
+        Vec3::new(width * 0.72, height * 0.42, depth * 0.62),
+        color,
+    );
+    spawn_actor_sphere(
+        commands,
+        meshes,
+        materials,
+        root,
+        Vec3::new(0.0, -height * 0.2, 0.0),
+        Vec3::new(width * 0.35, height * 0.12, depth * 0.3),
+        shorts,
+    );
+    spawn_actor_sphere(
+        commands,
+        meshes,
+        materials,
+        root,
+        Vec3::new(0.0, height * 0.3, 0.0),
+        Vec3::new(width * 0.12, height * 0.075, depth * 0.12),
+        skin,
+    );
+    spawn_actor_sphere(
+        commands,
+        meshes,
+        materials,
+        root,
+        Vec3::new(0.0, height * 0.39, 0.0),
+        Vec3::new(width * 0.27, height * 0.14, depth * 0.23),
+        skin,
+    );
+    spawn_actor_sphere(
+        commands,
+        meshes,
+        materials,
+        root,
+        Vec3::new(0.0, height * 0.48, -depth * 0.035),
+        Vec3::new(width * 0.25, height * 0.08, depth * 0.22),
+        hair,
+    );
+    for side in [-1.0, 1.0] {
+        spawn_actor_sphere(
+            commands,
+            meshes,
+            materials,
+            root,
+            Vec3::new(side * width * 0.4, height * 0.03, 0.0),
+            Vec3::new(width * 0.12, height * 0.15, depth * 0.12),
+            color,
+        );
+        spawn_actor_sphere(
+            commands,
+            meshes,
+            materials,
+            root,
+            Vec3::new(side * width * 0.4, -height * 0.14, 0.0),
+            Vec3::new(width * 0.1, height * 0.12, depth * 0.11),
+            skin,
+        );
+        spawn_actor_sphere(
+            commands,
+            meshes,
+            materials,
+            root,
+            Vec3::new(side * width * 0.17, -height * 0.24, 0.0),
+            Vec3::new(width * 0.14, height * 0.14, depth * 0.14),
+            shorts,
+        );
+        spawn_actor_sphere(
+            commands,
+            meshes,
+            materials,
+            root,
+            Vec3::new(side * width * 0.17, -height * 0.39, 0.0),
+            Vec3::new(width * 0.115, height * 0.13, depth * 0.12),
+            Color::srgb(0.13, 0.22, 0.34),
+        );
+        spawn_actor_box(
+            commands,
+            meshes,
+            materials,
+            root,
+            Vec3::new(side * width * 0.17, -height * 0.47, depth * 0.1),
+            Vec3::new(width * 0.3, height * 0.09, depth * 0.42),
+            Color::srgb(0.08, 0.075, 0.07),
+        );
+        spawn_actor_sphere(
+            commands,
+            meshes,
+            materials,
+            root,
+            Vec3::new(side * width * 0.105, height * 0.4, depth * 0.2),
+            Vec3::new(width * 0.04, height * 0.035, depth * 0.025),
+            Color::WHITE,
+        );
+        spawn_actor_sphere(
+            commands,
+            meshes,
+            materials,
+            root,
+            Vec3::new(side * width * 0.105, height * 0.4, depth * 0.225),
+            Vec3::new(width * 0.02, height * 0.025, depth * 0.018),
+            Color::srgb(0.08, 0.06, 0.04),
+        );
+    }
+    let mut entity = commands.entity(root);
     if player {
         entity.insert((
             Player,
             PlayerMotion::default(),
             RigidBody::KinematicPositionBased,
-            collider,
+            Collider::capsule_y(half_segment, radius),
             KinematicCharacterController {
                 snap_to_ground: Some(CharacterLength::Absolute(0.05)),
                 ..default()
             },
         ));
     } else {
-        entity.insert((Npc, RigidBody::Fixed, collider));
+        entity.insert((
+            Npc,
+            RigidBody::Fixed,
+            Collider::capsule_y(half_segment, radius),
+        ));
     }
+}
+
+fn spawn_actor_box(
+    commands: &mut Commands,
+    meshes: &mut Assets<Mesh>,
+    materials: &mut Assets<StandardMaterial>,
+    parent: Entity,
+    position: Vec3,
+    size: Vec3,
+    color: Color,
+) {
+    commands.spawn((
+        Mesh3d(meshes.add(Cuboid::new(size.x, size.y, size.z))),
+        MeshMaterial3d(materials.add(color)),
+        Transform::from_translation(position),
+        ChildOf(parent),
+    ));
+}
+
+fn spawn_actor_sphere(
+    commands: &mut Commands,
+    meshes: &mut Assets<Mesh>,
+    materials: &mut Assets<StandardMaterial>,
+    parent: Entity,
+    position: Vec3,
+    scale: Vec3,
+    color: Color,
+) {
+    commands.spawn((
+        Mesh3d(meshes.add(Sphere::new(1.0).mesh().uv(16, 12))),
+        MeshMaterial3d(materials.add(color)),
+        Transform::from_translation(position).with_scale(scale),
+        ChildOf(parent),
+    ));
 }
 
 fn player_controller(
@@ -418,7 +865,7 @@ fn player_controller(
     story: Res<RuntimeStory>,
     mut player: Query<
         (
-            &Transform,
+            &mut Transform,
             &mut KinematicCharacterController,
             &mut PlayerMotion,
             Option<&KinematicCharacterControllerOutput>,
@@ -426,7 +873,7 @@ fn player_controller(
         With<Player>,
     >,
 ) {
-    let Ok((transform, mut controller, mut motion, output)) = player.single_mut() else {
+    let Ok((mut transform, mut controller, mut motion, output)) = player.single_mut() else {
         return;
     };
     let dt = time.delta_secs();
@@ -445,6 +892,9 @@ fn player_controller(
         if keys.pressed(KeyCode::KeyD) {
             direction.x += 1.0;
         }
+    }
+    if direction.length_squared() > 0.0 {
+        transform.rotation = Quat::from_rotation_y(direction.x.atan2(-direction.z));
     }
 
     let grounded = output.is_some_and(|output| output.grounded);
@@ -594,28 +1044,43 @@ fn animate_npc(
 }
 
 fn cinematic_camera(
+    time: Res<Time>,
     scene: Res<ActiveScene>,
     story: Res<RuntimeStory>,
-    mut camera: Query<&mut Transform, With<Camera3d>>,
+    player: Query<&Transform, (With<Player>, Without<Camera3d>)>,
+    mut camera: Query<&mut Transform, (With<Camera3d>, Without<Player>)>,
 ) {
     let Ok(mut transform) = camera.single_mut() else {
         return;
     };
     if story.progress.phase != GamePhase::Cutscene {
-        *transform = Transform::from_xyz(0.0, 7.0, 11.0).looking_at(Vec3::ZERO, Vec3::Y);
+        let Ok(player) = player.single() else {
+            return;
+        };
+        let focus = player.translation + Vec3::Y * 0.45;
+        let position = player.translation + Vec3::new(0.0, 5.2, 8.0);
+        let target = Transform::from_translation(position).looking_at(focus, Vec3::Y);
+        let smoothing = 1.0 - (-time.delta_secs() * 5.0).exp();
+        transform.translation = transform.translation.lerp(target.translation, smoothing);
+        transform.rotation = transform.rotation.slerp(target.rotation, smoothing);
         return;
     }
+
     let shots = &scene.0.cutscene.shots;
+    let frame = story.progress.frame as f32 + story.frame_remainder;
     let next = shots
         .iter()
-        .position(|shot| shot.frame > story.progress.frame)
+        .position(|shot| shot.frame as f32 > frame)
         .unwrap_or(shots.len());
     let start = &shots[next.saturating_sub(1)];
     let target = shots.get(next).unwrap_or(start);
     let span = target.frame.saturating_sub(start.frame).max(1) as f32;
-    let amount = ((story.progress.frame.saturating_sub(start.frame)) as f32 / span).clamp(0.0, 1.0);
-    let position = Vec3::from_array(start.position).lerp(Vec3::from_array(target.position), amount);
-    let focus = Vec3::from_array(start.target).lerp(Vec3::from_array(target.target), amount);
+    let amount = ((frame - start.frame as f32) / span).clamp(0.0, 1.0);
+    let eased = amount * amount * (3.0 - 2.0 * amount);
+    let mut position =
+        Vec3::from_array(start.position).lerp(Vec3::from_array(target.position), eased);
+    position.y += (amount * std::f32::consts::PI).sin() * 0.3;
+    let focus = Vec3::from_array(start.target).lerp(Vec3::from_array(target.target), eased);
     *transform = Transform::from_translation(position).looking_at(focus, Vec3::Y);
 }
 
@@ -671,6 +1136,35 @@ mod tests {
     use super::*;
 
     use bevy::time::{TimePlugin, TimeUpdateStrategy};
+    #[test]
+    fn cinematic_camera_eases_through_authored_shots() {
+        let scene =
+            parse_scene(include_str!("../../../assets/scenes/bairro-da-bola.json")).unwrap();
+        let mut story = RuntimeStory::default();
+        assert!(story.progress.interact(1.0));
+        story
+            .progress
+            .advance_cutscene(50, &scene.cutscene, &scene.field.objective);
+        story.frame_remainder = 0.5;
+
+        let mut app = App::new();
+        app.insert_resource(ActiveScene(scene))
+            .insert_resource(story)
+            .insert_resource(Time::<()>::default())
+            .add_systems(Update, cinematic_camera);
+        app.world_mut()
+            .spawn((Player, Transform::from_xyz(-2.0, 0.9, 0.0)));
+        let camera = app
+            .world_mut()
+            .spawn((Camera3d::default(), Transform::from_xyz(0.0, 7.0, 11.0)))
+            .id();
+
+        app.update();
+
+        let transform = app.world().get::<Transform>(camera).unwrap();
+        assert!((2.4..4.2).contains(&transform.translation.x));
+        assert!(transform.translation.y > 2.7);
+    }
 
     #[test]
     fn save_hotkeys_round_trip_mission_state_and_player_position() {
